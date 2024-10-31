@@ -1,6 +1,7 @@
 <?php
 // login.php
 require 'db.php';
+session_start();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = $_POST['username'];
@@ -15,6 +16,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stmt = $pdo->prepare("SELECT * FROM users WHERE username = :username");
     $stmt->execute(['username' => $username]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($user && password_verify($password, $user['password_hash'])) {
+        $_SESSION['loggedin'] = true;
+        $_SESSION['username'] = $username;
+        header('Location: home.php');
+        exit();
+    } else {
+        echo "Invalid username or password.";
+    }
 }
 ?>
 
