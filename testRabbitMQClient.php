@@ -1,30 +1,36 @@
 #!/usr/bin/php
 <?php
+
 require_once('path.inc');
 require_once('get_host_info.inc');
 require_once('rabbitMQLib.inc');
 
-$client = new rabbitMQClient("testRabbitMQ.ini","testServer");
-if (isset($argv[1]))
-{
-  $msg = $argv[1];
+try {
+    // Create a new RabbitMQ client using the configuration in the .ini file
+    $client = new rabbitMQClient("testRabbitMQ.ini", "testServer");
+
+    // Check if a message is provided as an argument, otherwise use "test message"
+    $msg = isset($argv[1]) ? $argv[1] : "test message";
+
+    // Prepare the request array
+    $request = [
+        'type' => "Login",
+        'username' => "steve",
+        'password' => "password",
+        'message' => $msg,
+    ];
+
+    // Send the request and capture the response
+    $response = $client->send_request($request);
+
+    // Print the response from the RabbitMQ server
+    echo "Client received response:\n";
+    print_r($response);
+
+} catch (Exception $e) {
+    // Handle any exceptions that occur during execution
+    echo "Failed to send message: " . $e->getMessage() . "\n";
 }
-else
-{
-  $msg = "test message";
-}
 
-$request = array();
-$request['type'] = "Login";
-$request['username'] = "steve";
-$request['password'] = "password";
-$request['message'] = $msg;
-$response = $client->send_request($request);
-//$response = $client->publish($request);
-
-echo "client received response: ".PHP_EOL;
-print_r($response);
-echo "\n\n";
-
-echo $argv[0]." END".PHP_EOL;
+echo "\n" . $argv[0] . " END\n";
 
