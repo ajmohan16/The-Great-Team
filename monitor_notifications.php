@@ -17,65 +17,94 @@ $rabbitPort = 5672;
 $rabbitUser = 'test';
 $rabbitPassword = 'test';
 $rabbitVhost = 'testHost'; // Set the virtual host here
+$request_queue = 'login_requests';
+$response_queue = 'login_responses';
 
-try {
-    // Connect to MySQL
-    $pdo = new PDO("mysql:host=$mysqlHost;dbname=$mysqlDB", $mysqlUser, $mysqlPassword);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    echo "Connected to MySQL\n";
+function verifyLoginCredentials($username, $password_hash) {
+    global $mysqlHost, $mysqlDB, $mysqlUser, $mysqlPassword;
 
-    // Connect to RabbitMQ with the specified virtual host
-    $rabbitConnection = new AMQPStreamConnection($rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost);
-    $channel = $rabbitConnection->channel();
-    
-    // Declare the queue in RabbitMQ
-    $channel->queue_declare('NewPersonQueue', false, true, false, false);
-    echo "Connected to RabbitMQ\n";
+    try {
+        // Connect to MySQL
+        $pdo = new PDO("mysql:host=$mysqlHost;dbname=$mysqlDB", $mysqlUser, $mysqlPassword);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    while (true) {
-        // Check for new notifications in MySQL
-        $stmt = $pdo->query("SELECT NotificationID, PersonID FROM Notifications WHERE NotificationType = 'NewPerson'");
-        $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Query to check username and password_hash
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE username = :username AND password_hash = :password_hash");
+        $stmt->execute(['username' => $username, 'password_hash' => $password_hash]);
 
-        foreach ($notifications as $notification) {
-            $personId = $notification['PersonID'];
-            $notificationId = $notification['NotificationID'];
+        return $stmt->fetch() ? true : false;
 
-            // Fetch person details from the People table
-            $personStmt = $pdo->prepare("SELECT FirstName, LastName, EmailAddress, DOB FROM People WHERE ID = ?");
-            $personStmt->execute([$personId]);
-            $person = $personStmt->fetch(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        echo "Database error: " . $e->getMessage();
+        return false;
+    }
+}
 
-            if ($person) {
-                // Prepare message data
-                $messageData = json_encode([
-                    'ID' => $personId,
-                    'FirstName' => $person['FirstName'],
-                    'LastName' => $person['LastName'],
-                    'EmailAddress' => $person['EmailAddress'],
-                    'DOB' => $person['DOB']
-                ]);
+// Send response back to RabbitMQ
+function sendLoginResponse($username, $success) {
+    global $rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost, $response_queue;
 
-                // Send message to RabbitMQ
-                $msg = new AMQPMessage($messageData, ['delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT]);
-                $channel->basic_publish($msg, '', 'NewPersonQueue');
-                echo "Sent to RabbitMQ: $messageData\n";
+    // Connect to RabbitMQ
+    $connection = new AMQPStreamConnection($rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost);
+    $channel = $connection->channel();
 
-                // Delete processed notification to avoid re-processing
-                $deleteStmt = $pdo->prepare("DELETE FROM Notifications WHERE NotificationID = ?");
-                $deleteStmt->execute([$notificationId]);
-            }
-        }
+    // Declare the response queue
+    $channel->queue_declare($response_queue, false, false, false, false);
 
-        // Sleep to prevent continuous querying and reduce server load
-        sleep(5);
+    // Create response message
+    $responseBody = json_encode([
+        'username' => $username,
+        'login_success' => $success,
+    ]);
+    $message = new AMQPMessage($responseBody);
+
+    // Publish response message
+    $channel->basic_publish($message, '', $response_queue);
+    echo "Login response sent for user: $username, success: $success\n";
+
+    // Close the connection
+    $channel->close();
+    $connection->close();
+}
+
+// Consume login requests and verify credentials
+function consumeLoginRequests() {
+    global $rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost, $request_queue;
+
+    // Connect to RabbitMQ
+    $connection = new AMQPStreamConnection($rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost);
+    $channel = $connection->channel();
+
+    // Declare the request queue
+    $channel->queue_declare($request_queue, false, false, false, false);
+
+    // Callback function to handle login requests
+    $callback = function($msg) {
+        $data = json_decode($msg->body, true);
+        $username = $data['username'];
+        $password_hash = $data['password_hash'];
+
+        // Verify credentials in MySQL
+        $login_success = verifyLoginCredentials($username, $password_hash);
+
+        // Send the response back to RabbitMQ
+        sendLoginResponse($username, $login_success);
+    };
+
+    // Start consuming messages
+    $channel->basic_consume($request_queue, '', false, true, false, false, $callback);
+    echo "Waiting for login requests...\n";
+
+    // Keep the consumer running
+    while ($channel->is_consuming()) {
+        $channel->wait();
     }
 
-    // Close connections (though this code will not be reached due to the infinite loop)
+    // Close the connection
     $channel->close();
-    $rabbitConnection->close();
-    $pdo = null;
-
-} catch (Exception $e) {
-    die("Error: " . $e->getMessage());
+    $connection->close();
 }
+
+// Start the consumer
+consumeLoginRequests();
+
