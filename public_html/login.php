@@ -1,8 +1,82 @@
 <?php
 // login.php
-require 'db.php';
+require 'vendor/autoload.php';
 session_start();
 
+use PhpAmqpLib\Connection\AMQPStreamConnection;
+use PhpAmqpLib\Message\AMQPMessage;
+
+// RabbitMQ Configuration
+$rabbitmq_host = '172.26.233.84';
+$request_queue = 'login_requests';
+$response_queue = 'login_responses';
+
+function sendLoginRequest($username, $password) {
+    global $rabbitmq_host, $request_queue, $response_queue;
+
+    try {
+        $connection = new AMQPStreamConnection($rabbitmq_host, 5672, 'test', 'test', 'testHost');
+        $channel = $connection->channel();
+
+        // Declare queues
+        $channel->queue_declare($request_queue, false, false, false, false);
+        $channel->queue_declare($response_queue, false, false, false, false);
+
+        // Generate a unique correlation ID and reply-to queue
+        $correlation_id = uniqid();
+
+        // Prepare login request message with correlation ID
+        $messageBody = json_encode([
+            'username' => $username,
+            'password' => $password  // Send the plain password to be verified
+        ]);
+        $message = new AMQPMessage(
+            $messageBody,
+            [
+                'correlation_id' => $correlation_id,
+                'reply_to' => $response_queue  // Set reply-to header for response
+            ]
+        );
+
+        // Send login request
+        $channel->basic_publish($message, '', $request_queue);
+        echo "Login request sent for user: $username<br>";
+
+        // Listen for a response
+        $response = null;
+        $callback = function ($msg) use ($correlation_id, &$response) {
+            if ($msg->get('correlation_id') === $correlation_id) {
+                $response = json_decode($msg->body, true);
+            }
+        };
+
+        // Set up the consumer
+        $channel->basic_consume($response_queue, '', false, false, false, false, $callback);
+
+        // Wait for the response message
+        while (!$response) {
+            $channel->wait(null, false, 10);  // Timeout after 10 seconds
+        }
+
+        // Process the response
+        if ($response['login_success']) {
+            $_SESSION['loggedin'] = true;
+            $_SESSION['username'] = $username;
+            header('Location: home.php');
+        } else {
+            echo "Invalid username or password.";
+        }
+
+        // Close the connection
+        $channel->close();
+        $connection->close();
+
+    } catch (Exception $e) {
+        echo "An error occurred while sending the login request: " . $e->getMessage() . "<br>";
+    }
+}
+
+// Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = $_POST['username'];
     $password = $_POST['password'];
@@ -12,19 +86,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 
-    // Fetch user data
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE username = :username");
-    $stmt->execute(['username' => $username]);
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($user && password_verify($password, $user['password_hash'])) {
-        $_SESSION['loggedin'] = true;
-        $_SESSION['username'] = $username;
-        header('Location: home.php');
-        exit();
-    } else {
-        echo "Invalid username or password.";
-    }
+    // Send login request to RabbitMQ
+    sendLoginRequest($username, $password);
 }
 ?>
 
