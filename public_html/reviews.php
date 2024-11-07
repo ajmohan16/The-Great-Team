@@ -28,7 +28,7 @@ $channel->queue_declare('reviews_queue', false, true, false, false);
 $reviewData = json_encode([
 	'track_id' => $track_id,
 	'rating' => $rating,
-	'description' => $description;
+	'description' => $description,
 ]);
 
 $msg = new AMQPMessage($reviewData, ['delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT]);
