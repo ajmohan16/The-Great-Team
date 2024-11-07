@@ -1,5 +1,4 @@
 <?php
-
 require __DIR__ . '/../vendor/autoload.php';
 
 use PhpAmqpLib\Connection\AMQPStreamConnection;
@@ -18,9 +17,8 @@ $rabbitUser = 'test';
 $rabbitPassword = 'test';
 $rabbitVhost = 'testHost'; // Set the virtual host here
 $request_queue = 'login_requests';
-$response_queue = 'login_responses';
 
-function verifyLoginCredentials($username, $password_hash) {
+function verifyLoginCredentials($username, $password) {
     global $mysqlHost, $mysqlDB, $mysqlUser, $mysqlPassword;
 
     try {
@@ -29,8 +27,8 @@ function verifyLoginCredentials($username, $password_hash) {
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
         // Query to check username and password_hash
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE username = :username AND password_hash = :password_hash");
-        $stmt->execute(['username' => $username, 'password_hash' => $password_hash]);
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE username = :username AND password = :password");
+        $stmt->execute(['username' => $username, 'password' => $password]);
 
         return $stmt->fetch() ? true : false;
 
@@ -40,26 +38,29 @@ function verifyLoginCredentials($username, $password_hash) {
     }
 }
 
-// Send response back to RabbitMQ
-function sendLoginResponse($username, $success) {
-    global $rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost, $response_queue;
+// Send response back to the reply queue
+function sendLoginResponse($reply_to, $correlation_id, $username, $success) {
+    global $rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost;
 
     // Connect to RabbitMQ
     $connection = new AMQPStreamConnection($rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost);
     $channel = $connection->channel();
 
-    // Declare the response queue
-    $channel->queue_declare($response_queue, false, false, false, false);
+    // Declare the reply queue
+    $channel->queue_declare($reply_to, false, false, false, false);
 
-    // Create response message
+    // Create response message with correlation_id
     $responseBody = json_encode([
         'username' => $username,
         'login_success' => $success,
     ]);
-    $message = new AMQPMessage($responseBody);
+    $message = new AMQPMessage(
+        $responseBody,
+        ['correlation_id' => $correlation_id]
+    );
 
-    // Publish response message
-    $channel->basic_publish($message, '', $response_queue);
+    // Publish response message to the reply queue
+    $channel->basic_publish($message, '', $reply_to);
     echo "Login response sent for user: $username, success: $success\n";
 
     // Close the connection
@@ -82,13 +83,15 @@ function consumeLoginRequests() {
     $callback = function($msg) {
         $data = json_decode($msg->body, true);
         $username = $data['username'];
-        $password_hash = $data['password_hash'];
+        $password = $data['password'];
+        $reply_to = $msg->get('reply_to');
+        $correlation_id = $msg->get('correlation_id');
 
         // Verify credentials in MySQL
-        $login_success = verifyLoginCredentials($username, $password_hash);
+        $login_success = verifyLoginCredentials($username, $password);
 
-        // Send the response back to RabbitMQ
-        sendLoginResponse($username, $login_success);
+        // Send the response back to the specified reply queue with correlation ID
+        sendLoginResponse($reply_to, $correlation_id, $username, $login_success);
     };
 
     // Start consuming messages
