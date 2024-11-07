@@ -1,5 +1,5 @@
 <?php
-require __DIR__ . '/../vendor/autoload.php';
+require __DIR__ . '/../vendor/autoload.php'; 
 
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
@@ -18,6 +18,7 @@ $rabbitPassword = 'test';
 $rabbitVhost = 'testHost'; // Set the virtual host here
 $request_queue = 'login_requests';
 
+// Function to verify login credentials
 function verifyLoginCredentials($username, $password) {
     global $mysqlHost, $mysqlDB, $mysqlUser, $mysqlPassword;
 
@@ -26,12 +27,17 @@ function verifyLoginCredentials($username, $password) {
         $pdo = new PDO("mysql:host=$mysqlHost;dbname=$mysqlDB", $mysqlUser, $mysqlPassword);
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-        // Query to check username and password_hash
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE username = :username AND password = :password");
-        $stmt->execute(['username' => $username, 'password' => $password]);
+        // Query to get the hashed password for the user
+        $stmt = $pdo->prepare("SELECT password FROM users WHERE username = :username");
+        $stmt->execute(['username' => $username]);
+        $row = $stmt->fetch();
 
-        return $stmt->fetch() ? true : false;
-
+        // Verify the password
+        if ($row && password_verify($password, $row['password'])) {
+            return true; // Login successful
+        } else {
+            return false; // Login failed
+        }
     } catch (PDOException $e) {
         echo "Database error: " . $e->getMessage();
         return false;

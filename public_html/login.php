@@ -1,5 +1,4 @@
 <?php
-// login.php
 require 'vendor/autoload.php';
 session_start();
 
@@ -22,7 +21,7 @@ function sendLoginRequest($username, $password) {
         $channel->queue_declare($request_queue, false, false, false, false);
         $channel->queue_declare($response_queue, false, false, false, false);
 
-        // Generate a unique correlation ID and reply-to queue
+        // Generate a unique correlation ID
         $correlation_id = uniqid();
 
         // Prepare login request message with correlation ID
@@ -63,6 +62,7 @@ function sendLoginRequest($username, $password) {
             $_SESSION['loggedin'] = true;
             $_SESSION['username'] = $username;
             header('Location: home.php');
+            exit; // Important to exit after redirecting
         } else {
             echo "Invalid username or password.";
         }
@@ -78,8 +78,8 @@ function sendLoginRequest($username, $password) {
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = $_POST['username'];
-    $password = $_POST['password'];
+    $username = trim($_POST['username']);
+    $password = trim($_POST['password']);
 
     if (empty($username) || empty($password)) {
         echo "Username and password are required.";
@@ -120,3 +120,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </form>
 </body>
 </html>
+
