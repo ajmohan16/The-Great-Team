@@ -22,21 +22,14 @@ function sendLoginRequest($username, $password) {
         $channel->queue_declare($request_queue, false, false, false, false);
         $channel->queue_declare($response_queue, false, false, false, false);
 
-        // Generate a unique correlation ID and reply-to queue
-        $correlation_id = uniqid();
-
-        // Prepare login request message with correlation ID
+        // Prepare login request message without correlation ID
         $messageBody = json_encode([
             'username' => $username,
-            'password' => $password  // Send the plain password to be verified
+            'password' => $password
         ]);
-        $message = new AMQPMessage(
-            $messageBody,
-            [
-                'correlation_id' => $correlation_id,
-                'reply_to' => $response_queue  // Set reply-to header for response
-            ]
-        );
+        $message = new AMQPMessage($messageBody, [
+            'reply_to' => $response_queue  // Set reply-to header for response
+        ]);
 
         // Send login request
         $channel->basic_publish($message, '', $request_queue);
@@ -44,14 +37,12 @@ function sendLoginRequest($username, $password) {
 
         // Listen for a response
         $response = null;
-        $callback = function ($msg) use ($correlation_id, &$response) {
-            if ($msg->get('correlation_id') === $correlation_id) {
-                $response = json_decode($msg->body, true);
-            }
+        $callback = function ($msg) use (&$response) {
+            $response = json_decode($msg->body, true);
         };
 
         // Set up the consumer
-        $channel->basic_consume($response_queue, '', false, false, false, false, $callback);
+        $channel->basic_consume($response_queue, '', false, true, false, false, $callback);
 
         // Wait for the response message
         while (!$response) {
@@ -59,7 +50,7 @@ function sendLoginRequest($username, $password) {
         }
 
         // Process the response
-        if ($response['login_success']) {
+        if (isset($response['login_success']) && $response['login_success']) {
             $_SESSION['loggedin'] = true;
             $_SESSION['username'] = $username;
             header('Location: home.php');
@@ -120,3 +111,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </form>
 </body>
 </html>
+
