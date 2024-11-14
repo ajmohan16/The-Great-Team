@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rate and Review Songs</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <h1>Rate and Review Songs</h1>
+
+    <!-- Submit Review Form -->
+    <h2>Submit a Review</h2>
+    <form id="submitReviewForm">
+        <input type="text" id="reviewSongId" placeholder="Enter song ID" required>
+        <input type="number" id="rating" placeholder="Enter rating (1-5)" min="1" max="5" required>
+        <textarea id="reviewText" placeholder="Enter your review" required></textarea>
+        <button type="submit">Submit Review</button>
+    </form>
+
+    <!-- Display Existing Reviews -->
+    <h2>Existing Reviews</h2>
+    <div id="reviewsContainer" class="results"></div>
+
+    <script>
+        // Submit Review Handler
+        document.getElementById('submitReviewForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const songId = document.getElementById('reviewSongId').value;
+            const rating = document.getElementById('rating').value;
+            const reviewText = document.getElementById('reviewText').value;
+
+            fetch(`scripts/send_review.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ song_id: songId, rating: rating, review: reviewText })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message || 'Review submitted successfully!');
+                loadReviews();  // Reload reviews after submission
+            })
+            .catch(error => console.error('Error:', error));
+        });
+
+        // Fetch and Display Existing Reviews
+        function loadReviews() {
+            fetch('scripts/review_consumer.php')
+                .then(response => response.json())
+                .then(data => {
+                    const reviewsContainer = document.getElementById('reviewsContainer');
+                    reviewsContainer.innerHTML = '';
+                    if (data.error) {
+                        reviewsContainer.innerHTML = `<p>${data.error}</p>`;
+                    } else {
+                        data.forEach(review => {
+                            reviewsContainer.innerHTML += `
+                                <div class="review">
+                                    <p><strong>Song ID:</strong> ${review.song_id}</p>
+                                    <p><strong>Rating:</strong> ${review.rating}</p>
+                                    <p><strong>Review:</strong> ${review.review}</p>
+                                    <p><strong>Reviewed At:</strong> ${review.review_date}</p>
+                                </div>
+                                <hr>
+                            `;
+                        });
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        // Load reviews on page load
+        document.addEventListener('DOMContentLoaded', loadReviews);
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browse Albums</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <h1>Albums by Artist</h1>
+
+    <!-- Albums Display -->
+    <div id="albumsInfo" class="results"></div>
+
+    <script>
+        // Get artist_id from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const artistId = urlParams.get('artist_id');
+
+        if (artistId) {
+            // Fetch albums for the artist
+            fetch(`scripts/get_artist_albums.php?artist_id=${encodeURIComponent(artistId)}`)
+                .then(response => response.json())
+                .then(data => {
+                    const albumsInfo = document.getElementById('albumsInfo');
+                    if (data.error) {
+                        albumsInfo.innerHTML = `<p>${data.error}</p>`;
+                    } else {
+                        albumsInfo.innerHTML = '<h3>Album List</h3>';
+                        data.forEach(album => {
+                            albumsInfo.innerHTML += `
+                                <div class="album">
+                                    <p><strong>Album:</strong> ${album.name}</p>
+                                    <p><strong>Release Date:</strong> ${album.release_date}</p>
+                                    <p><a href="${album.link}" target="_blank">Listen on Spotify</a></p>
+                                </div>
+                                <hr>
+                            `;
+                        });
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        } else {
+            document.getElementById('albumsInfo').innerHTML = '<p>Artist ID is missing in the URL.</p>';
+        }
+    </script>
+</body>
+</html>
+

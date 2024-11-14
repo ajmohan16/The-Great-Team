@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browse by Song Title</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <h1>Browse Music by Song Title</h1>
+
+    <!-- Song Search Form -->
+    <form id="songSearchForm">
+        <input type="text" id="songTitle" placeholder="Enter song title" required>
+        <button type="submit">Search Song</button>
+    </form>
+
+    <!-- Song Information Display -->
+    <div id="songInfo" class="results"></div>
+
+    <script>
+        // Song Search Handler
+        document.getElementById('songSearchForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const songTitle = document.getElementById('songTitle').value;
+            
+            fetch(`scripts/search_songs.php?song=${encodeURIComponent(songTitle)}`)
+                .then(response => response.json())
+                .then(data => {
+                    const songInfo = document.getElementById('songInfo');
+                    if (data.error) {
+                        songInfo.innerHTML = `<p>${data.error}</p>`;
+                    } else {
+                        songInfo.innerHTML = '<h3>Song List</h3>';
+                        data.forEach(song => {
+                            songInfo.innerHTML += `
+                                <div class="song">
+                                    <p><strong>Title:</strong> ${song.name}</p>
+                                    <p><strong>Artist:</strong> ${song.artist}</p>
+                                    <p><strong>Album:</strong> ${song.album}</p>
+                                    <p><a href="${song.link}" target="_blank">Listen on Spotify</a></p>
+                                </div>
+                                <hr>
+                            `;
+                        });
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        });
+    </script>
+</body>
+</html>
+

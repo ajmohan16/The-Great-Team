@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browse by Artist</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <h1>Browse Music by Artist</h1>
+
+    <!-- Artist Search Form -->
+    <form id="artistSearchForm">
+        <input type="text" id="artistName" placeholder="Enter artist name" required>
+        <button type="submit">Search Artist</button>
+    </form>
+
+    <!-- Artist Information Display -->
+    <div id="artistInfo" class="results"></div>
+
+    <!-- Album View Link -->
+    <div id="viewAlbums" style="display: none;">
+        <h2>Albums by Selected Artist</h2>
+        <button id="viewAlbumsButton">View Albums</button>
+    </div>
+
+    <script>
+        // Artist Search Handler
+        document.getElementById('artistSearchForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const artistName = document.getElementById('artistName').value;
+            
+            fetch(`scripts/search_artists.php?artist=${encodeURIComponent(artistName)}`)
+                .then(response => response.json())
+                .then(data => {
+                    const artistInfo = document.getElementById('artistInfo');
+                    if (data.error) {
+                        artistInfo.innerHTML = `<p>${data.error}</p>`;
+                    } else {
+                        artistInfo.innerHTML = `
+                            <h3>Artist Information</h3>
+                            <p><strong>Name:</strong> ${data['Artist Name']}</p>
+                            <p><strong>Genres:</strong> ${data['Genres'].join(', ')}</p>
+                            <p><strong>Followers:</strong> ${data['Followers']}</p>
+                            <p><a href="${data['Spotify Link']}" target="_blank">View on Spotify</a></p>
+                        `;
+                        document.getElementById('viewAlbums').style.display = 'block';
+                        document.getElementById('viewAlbumsButton').onclick = function () {
+                            window.location.href = `album.html?artist_id=${data['Spotify Link'].split('/').pop()}`;
+                        };
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        });
+    </script>
+</body>
+</html>
+

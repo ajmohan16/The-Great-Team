@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discussion Forum</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <h1>Discussion Forum</h1>
+
+    <!-- Add New Discussion Form -->
+    <h2>Start a New Discussion</h2>
+    <form id="newDiscussionForm">
+        <input type="text" id="discussionTopic" placeholder="Enter topic (e.g., album, artist, song)" required>
+        <textarea id="discussionContent" placeholder="Enter your discussion content" required></textarea>
+        <button type="submit">Post Discussion</button>
+    </form>
+
+    <!-- Display Discussions -->
+    <h2>Existing Discussions</h2>
+    <div id="discussionsContainer" class="results"></div>
+
+    <script>
+        // Submit New Discussion Handler
+        document.getElementById('newDiscussionForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const topic = document.getElementById('discussionTopic').value;
+            const content = document.getElementById('discussionContent').value;
+
+            fetch(`scripts/add_discussion.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ topic: topic, content: content })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message || 'Discussion posted successfully!');
+                loadDiscussions();  // Reload discussions after posting
+            })
+            .catch(error => console.error('Error:', error));
+        });
+
+        // Fetch and Display Discussions
+        function loadDiscussions() {
+            fetch('scripts/view_discussions.php')
+                .then(response => response.json())
+                .then(data => {
+                    const discussionsContainer = document.getElementById('discussionsContainer');
+                    discussionsContainer.innerHTML = '';
+                    if (data.error) {
+                        discussionsContainer.innerHTML = `<p>${data.error}</p>`;
+                    } else {
+                        data.forEach(discussion => {
+                            discussionsContainer.innerHTML += `
+                                <div class="discussion">
+                                    <p><strong>Topic:</strong> ${discussion.topic}</p>
+                                    <p>${discussion.content}</p>
+                                    <p><a href="#" onclick="loadComments(${discussion.id})">View Comments</a></p>
+                                    <div id="comments-${discussion.id}" style="display:none; margin-left:20px;"></div>
+                                    <textarea id="commentText-${discussion.id}" placeholder="Add a comment"></textarea>
+                                    <button onclick="addComment(${discussion.id})">Post Comment</button>
+                                </div>
+                                <hr>
+                            `;
+                        });
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        // Load Comments for a Discussion
+        function loadComments(discussionId) {
+            const commentsContainer = document.getElementById(`comments-${discussionId}`);
+            commentsContainer.style.display = commentsContainer.style.display === 'none' ? 'block' : 'none';
+
+            fetch(`scripts/view_comments.php?discussion_id=${discussionId}`)
+                .then(response => response.json())
+                .then(data => {
+                    commentsContainer.innerHTML = '';
+                    if (data.error) {
+                        commentsContainer.innerHTML = `<p>${data.error}</p>`;
+                    } else {
+                        data.forEach(comment => {
+                            commentsContainer.innerHTML += `
+                                <div class="comment">
+                                    <p><strong>Comment:</strong> ${comment.text}</p>
+                                    <p><em>Posted at:</em> ${comment.posted_at}</p>
+                                </div>
+                            `;
+                        });
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        // Add a Comment to a Discussion
+        function addComment(discussionId) {
+            const commentText = document.getElementById(`commentText-${discussionId}`).value;
+
+            fetch(`scripts/add_comment.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ discussion_id: discussionId, text: commentText })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message || 'Comment posted successfully!');
+                loadComments(discussionId);  // Reload comments for the discussion
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        // Load discussions on page load
+        document.addEventListener('DOMContentLoaded', loadDiscussions);
+    </script>
+</body>
+</html>
+
