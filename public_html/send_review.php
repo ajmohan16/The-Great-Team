@@ -8,10 +8,10 @@ use PhpAmqpLib\Message\AMQPMessage;
 $connection = new AMQPStreamConnection('172.26.233.84', 5672, 'test', 'test', 'testHost');
 $channel = $connection->channel();
 
-// Declare the queue with the same settings as the consumer
+// Declare the queue for reviews with durability enabled
 $channel->queue_declare('reviews_queue', false, true, false, false);
 
-// Sample data with all required fields
+// Sample data for testing; replace these with actual input
 $data = [
     'user_id' => 1,                // Replace with actual user ID
     'song_id' => 3,                // Replace with actual song ID
@@ -19,15 +19,20 @@ $data = [
     'review_text' => "Great track!" // Optional review text
 ];
 
-// Encode the data to JSON and prepare the message
+// Encode the data to JSON and prepare the message with persistence
 $messageBody = json_encode($data);
-$message = new AMQPMessage($messageBody);
+$message = new AMQPMessage($messageBody, ['delivery_mode' => 2]); // Make message persistent
 
 // Publish the message to the 'reviews_queue'
-$channel->basic_publish($message, '', 'reviews_queue');
-echo "Review message sent to queue.\n";
+try {
+    $channel->basic_publish($message, '', 'reviews_queue');
+    echo "Review message sent to queue.\n";
+} catch (Exception $e) {
+    echo "Failed to send review message: " . $e->getMessage() . "\n";
+}
 
 // Close the channel and connection
 $channel->close();
 $connection->close();
+?>
 

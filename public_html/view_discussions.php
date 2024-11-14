@@ -1,26 +1,39 @@
 <?php
 include 'database_connection.php'; // Include your MySQL DB connection
 
-function getDiscussions($topic_type, $topic_id) {
-    global $pdo;
-    $stmt = $pdo->prepare("
-        SELECT d.discussion_id, d.topic_type, d.title, d.content, d.created_at, u.username
-        FROM discussions d
-        JOIN users u ON d.created_by = u.user_id
-        WHERE d.topic_type = ? AND d.topic_id = ?
-        ORDER BY d.created_at DESC
-    ");
-    $stmt->execute([$topic_type, $topic_id]);
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+header('Content-Type: application/json');
+
+// Function to retrieve discussions based on topic type and topic ID
+function getDiscussions($topic_type, $topic_id, $pdo) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT d.discussion_id, d.topic_type, d.title, d.content, d.created_at, u.username
+            FROM discussions d
+            JOIN users u ON d.created_by = u.user_id
+            WHERE d.topic_type = ? AND d.topic_id = ?
+            ORDER BY d.created_at DESC
+        ");
+        $stmt->execute([$topic_type, $topic_id]);
+        $discussions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        return ["status" => "success", "data" => $discussions];
+    } catch (Exception $e) {
+        return ["status" => "error", "message" => "Failed to retrieve discussions: " . $e->getMessage()];
+    }
 }
 
-// Example usage: replace with actual values from a form or query string
-$topic_type = 'album';  // Example values: 'album', 'artist', 'song'
-$topic_id = 1;
+// Retrieve GET parameters for dynamic input
+$topic_type = $_GET['topic_type'] ?? null;
+$topic_id = $_GET['topic_id'] ?? null;
 
-$discussions = getDiscussions($topic_type, $topic_id);
+// Validate input
+if (!$topic_type || !$topic_id) {
+    echo json_encode(["status" => "error", "message" => "Please provide topic_type and topic_id."]);
+    exit;
+}
 
-header('Content-Type: application/json');
-echo json_encode($discussions);
+// Fetch discussions and output the response
+$response = getDiscussions($topic_type, $topic_id, $pdo);
+echo json_encode($response);
 ?>
 

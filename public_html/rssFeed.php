@@ -1,38 +1,71 @@
 <?php
-function getUserRSSFeed($user_id) {
-    global $pdo;
+include 'database_connection.php'; // Include your MySQL DB connection
 
-    $stmt = $pdo->prepare("SELECT name FROM artists 
-                            JOIN user_likes_dislikes ON artists.artist_id = user_likes_dislikes.song_id
-                            WHERE user_likes_dislikes.user_id = ? AND user_likes_dislikes.liked = TRUE");
-    $stmt->execute([$user_id]);
-    $liked_artists = $stmt->fetchAll(PDO::FETCH_COLUMN);
-    
-    $url = "https://musicnewsrss.com/artist/";
-    $rss_feed = fetchRSS($url);
+header('Content-Type: application/json');
 
-    $filtered_feed = array_filter($rss_feed, function($item) use ($liked_artists) {
-        foreach ($liked_artists as $artist) {
-            if (stripos($item['title'], $artist) !== false) {
-                return true;
-            }
+// Function to retrieve liked artists for a user and filter the RSS feed
+function getUserRSSFeed($user_id, $pdo) {
+    try {
+        // Retrieve liked artists for the user
+        $stmt = $pdo->prepare("
+            SELECT a.name 
+            FROM artists a
+            JOIN user_likes_dislikes uld ON a.artist_id = uld.song_id
+            WHERE uld.user_id = ? AND uld.liked = TRUE
+        ");
+        $stmt->execute([$user_id]);
+        $liked_artists = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        if (empty($liked_artists)) {
+            return ["status" => "error", "message" => "No liked artists found for this user."];
         }
-        return false;
-    });
 
-    return $filtered_feed;
-}
+        // Fetch and filter RSS feed based on liked artists
+        $url = "https://musicnewsrss.com/artist/";
+        $rss_feed = fetchRSS($url);
 
-function fetchRSS($url) {
-    $rss = simplexml_load_file($url);
-    $items = [];
-    foreach ($rss->channel->item as $item) {
-        $items[] = [
-            'title' => (string) $item->title,
-            'link' => (string) $item->link,
-            'description' => (string) $item->description
-        ];
+        $filtered_feed = array_filter($rss_feed, function($item) use ($liked_artists) {
+            foreach ($liked_artists as $artist) {
+                if (stripos($item['title'], $artist) !== false) {
+                    return true;
+                }
+            }
+            return false;
+        });
+
+        return ["status" => "success", "data" => array_values($filtered_feed)];
+    } catch (Exception $e) {
+        return ["status" => "error", "message" => "Failed to retrieve RSS feed: " . $e->getMessage()];
     }
-    return $items;
 }
+
+// Function to fetch RSS feed from an external URL
+function fetchRSS($url) {
+    try {
+        $rss = simplexml_load_file($url);
+        $items = [];
+        foreach ($rss->channel->item as $item) {
+            $items[] = [
+                'title' => (string) $item->title,
+                'link' => (string) $item->link,
+                'description' => (string) $item->description
+            ];
+        }
+        return $items;
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+// Retrieve user ID from query parameter
+$user_id = $_GET['user_id'] ?? null;
+if (!$user_id) {
+    echo json_encode(["status" => "error", "message" => "Please provide a user_id."]);
+    exit;
+}
+
+// Generate and output the filtered RSS feed
+$response = getUserRSSFeed($user_id, $pdo);
+echo json_encode($response);
 ?>
+
