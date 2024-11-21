@@ -3,6 +3,8 @@
 require 'vendor/autoload.php';
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
+//include navigation bar
+include 'nav.php';
 
 // RabbitMQ Configuration
 $rabbitmq_host = '172.26.233.84';
