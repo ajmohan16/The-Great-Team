@@ -13,10 +13,10 @@ $channel->queue_declare('reviews_queue', false, true, false, false);
 
 // Sample data for testing; replace these with actual input
 $data = [
-    'user_id' => 1,                // Replace with actual user ID
-    'song_id' => 3,                // Replace with actual song ID
-    'rating' => 4,                 // Replace with actual rating (e.g., 1-5)
-    'review_text' => "Great track!" // Optional review text
+    'user_id' => $user_id,                // Replace with actual user ID
+    'song_id' => $song_id,                // Replace with actual song ID
+    'rating' => $rating,                 // Replace with actual rating (e.g., 1-5)
+    'review_text' => $review_text // Optional review text
 ];
 
 // Encode the data to JSON and prepare the message with persistence
