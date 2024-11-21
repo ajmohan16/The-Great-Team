@@ -1,5 +1,6 @@
 <?php
-require_once 'config.php';
+require_once 'lib/config.php';
+include 'nav.php';
 // Spotify API endpoints
 define("ARTIST_URL", "https://api.spotify.com/v1/artists");
 define("ARTIST_ALBUMS_URL", "https://api.spotify.com/v1/artists/{id}/albums");

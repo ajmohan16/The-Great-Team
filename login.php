@@ -1,6 +1,8 @@
 <?php
 // login.php
 require 'vendor/autoload.php';
+//include navigation bar
+include 'nav.php';
 session_start();
 
 use PhpAmqpLib\Connection\AMQPStreamConnection;

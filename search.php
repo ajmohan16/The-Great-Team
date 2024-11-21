@@ -1,5 +1,5 @@
 <?php
-require_once 'config.php';
+require_once 'lib/config.php';
 // Spotify API endpoint for search
 define("SEARCH_URL", "https://api.spotify.com/v1/search");
 
