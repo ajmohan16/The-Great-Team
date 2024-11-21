@@ -52,7 +52,7 @@ $connection->close();
 <input type="number" name="rating" min="1" max="5" required><br><br>
 
 <label for="description">Review:</label>
-<textarea name="description" required></textarea><br<br>
+<textarea name="description" required></textarea><br><br>
 
 <button type="submit">Submit Review</button>
 </form>
