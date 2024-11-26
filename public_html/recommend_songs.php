@@ -1,5 +1,5 @@
 <?php
-include 'public_html/database_connection.php'; // Adjust the path if necessary
+include 'database_connection.php';// Adjust the path if necessary
 
 header('Content-Type: application/json');
 
