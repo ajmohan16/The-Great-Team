@@ -27,7 +27,7 @@
 </head>
 <body>
     <nav class="navbar">
-        <a href="home.php">Home</a>
+        <a href="landing_page.php">Home</a>
         <a href="login.php">Login</a>
         <a href="my_library.php">My Library</a>
         <a href="recommended.php">Recommended</a>

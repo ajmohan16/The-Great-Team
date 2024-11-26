@@ -1,6 +1,6 @@
 <?php
 // Include the config file
-require_once 'config.php';
+require_once 'lib/config.php';
 //include navigation bar
 include 'nav.php';
 //inclue search bar
