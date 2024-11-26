@@ -1,5 +1,8 @@
 <?php
-include 'public_html/database_connection.php'; // Adjust the path if necessary
+//include 'public_html/database_connection.php'; // Adjust the path if necessary
+// Database connection settings
+//$pdo = new PDO('mysql:host=localhost;dbname=QueueExample', 'testUser', 'Test@1234');
+//$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); 
 
 header('Content-Type: application/json');
 
@@ -20,6 +23,11 @@ function getRecommendations($user_id, $pdo) {
         if (empty($likedSongs)) {
             return ["status" => "error", "message" => "No liked songs found for recommendations."];
         }
+
+        $connection = new AMQPStreamConnection('172.26.233.84', 5672, 'test', 'test', 'testHost');
+        $channel = $connection->channel();
+        $channel->queue_declare('reviews_queue', false, true, false, false);
+    
 
         // Fetch recommended songs based on albums of liked songs and playlists
         $recommendStmt = $pdo->prepare("
@@ -70,3 +78,49 @@ $response = getRecommendations($user_id, $pdo);
 echo json_encode($response);
 ?>
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Song Recommendations</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <h1>Recommended Songs</h1>
+
+    <!-- Recommendations Display -->
+    <div id="recommendationsContainer" class="results"></div>
+
+    <script>
+        // Fetch and Display Recommendations
+        function loadRecommendations() {
+            fetch('scripts/recommend_songs.php')
+                .then(response => response.json())
+                .then(data => {
+                    const recommendationsContainer = document.getElementById('recommendationsContainer');
+                    recommendationsContainer.innerHTML = '';
+                    if (data.error) {
+                        recommendationsContainer.innerHTML = `<p>${data.error}</p>`;
+                    } else {
+                        data.forEach(song => {
+                            recommendationsContainer.innerHTML += `
+                                <div class="song">
+                                    <p><strong>Title:</strong> ${song.name}</p>
+                                    <p><strong>Artist:</strong> ${song.artist}</p>
+                                    <p><strong>Album:</strong> ${song.album}</p>
+                                    <p><a href="${song.link}" target="_blank">Listen on Spotify</a></p>
+                                </div>
+                                <hr>
+                            `;
+                        });
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        // Load recommendations on page load
+        document.addEventListener('DOMContentLoaded', loadRecommendations);
+    </script>
+</body>
+</html>
