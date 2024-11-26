@@ -1,12 +1,24 @@
 <?php
-include 'database_connection.php';// Adjust the path if necessary
+require_once __DIR__ . '/../vendor/autoload.php';
 
-header('Content-Type: application/json');
+use PhpAmqpLib\Connection\AMQPStreamConnection;
+use PhpAmqpLib\Message\AMQPMessage;
 
-// Function to generate song recommendations based on user likes and playlists
+// Database connection
+$pdo = new PDO('mysql:host=localhost;dbname=QueueExample', 'testUser', 'Test@1234');
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+// RabbitMQ connection
+$connection = new AMQPStreamConnection('172.26.233.84', 5672, 'test', 'test', 'testHost');
+$channel = $connection->channel();
+
+// Declare the queues
+$channel->queue_declare('recommendation_requests', false, true, false, false);
+$channel->queue_declare('recommendation_responses', false, true, false, false);
+
+// Function to generate song recommendations
 function getRecommendations($user_id, $pdo) {
     try {
-        // Fetch liked songs for the user
         $likedStmt = $pdo->prepare("
             SELECT s.song_id, s.title
             FROM user_likes_dislikes uld
@@ -16,12 +28,10 @@ function getRecommendations($user_id, $pdo) {
         $likedStmt->execute([$user_id]);
         $likedSongs = $likedStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // If no liked songs are found, exit early
         if (empty($likedSongs)) {
             return ["status" => "error", "message" => "No liked songs found for recommendations."];
         }
 
-        // Fetch recommended songs based on albums of liked songs and playlists
         $recommendStmt = $pdo->prepare("
             SELECT DISTINCT s.song_id, s.title, s.album_id
             FROM songs s
@@ -52,21 +62,40 @@ function getRecommendations($user_id, $pdo) {
     }
 }
 
-// Retrieve user ID from command line or POST data
-if (php_sapi_name() === 'cli') {
-    $user_id = $argv[1] ?? null;
-} else {
-    $user_id = $_POST['user_id'] ?? null;
+// Callback to process messages
+$callback = function ($msg) use ($pdo, $channel) {
+    $request = json_decode($msg->body, true);
+    $user_id = $request['user_id'] ?? null;
+
+    if (!$user_id) {
+        $response = ["status" => "error", "message" => "Please provide user_id."];
+    } else {
+        $response = getRecommendations($user_id, $pdo);
+    }
+
+    $responseMessage = new AMQPMessage(
+        json_encode($response),
+        ['correlation_id' => $msg->get('correlation_id'), 'delivery_mode' => 2] // Persistent message
+    );
+
+    // Publish the response to the `recommendation_responses` queue
+    $channel->basic_publish($responseMessage, '', 'recommendation_responses');
+
+    // Acknowledge the message
+    $msg->ack();
+};
+
+// Consume messages from the `recommendation_requests` queue
+$channel->basic_consume('recommendation_requests', '', false, false, false, false, $callback);
+
+echo "Waiting for recommendation requests. To exit, press CTRL+C\n";
+
+// Keep the script running to listen for messages
+while ($channel->is_consuming()) {
+    $channel->wait();
 }
 
-// Validate the user ID
-if (!$user_id) {
-    echo json_encode(["status" => "error", "message" => "Please provide user_id."]);
-    exit;
-}
-
-// Fetch recommendations and output the response
-$response = getRecommendations($user_id, $pdo);
-echo json_encode($response);
-?>
+// Close connections when done
+$channel->close();
+$connection->close();
 
