@@ -11,7 +11,7 @@ $rabbitmq_host = '172.26.233.84';
 $request_queue = 'register_requests';
 $response_queue = 'register_responses';
 
-function sendRegisterRequest($username, $password, $email) {
+function sendRegisterRequest($username, $hashed_password, $email) {
     global $rabbitmq_host, $request_queue, $response_queue;
 
     try {
@@ -25,7 +25,7 @@ function sendRegisterRequest($username, $password, $email) {
         // Prepare registration request message
         $messageBody = json_encode([
             'username' => $username,
-            'password' => $password,
+            'password' => $hashed_password, // Send the hashed password
             'email' => $email
         ]);
         $message = new AMQPMessage($messageBody, [
@@ -77,8 +77,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 
+    if (!preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,20}$/', $password)) {
+        echo "Password must be 8-20 characters long, include at least one uppercase letter, one lowercase letter, and one digit.";
+        exit();
+    }
+
+    $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+
     // Send registration request to RabbitMQ
-    sendRegisterRequest($username, $password, $email);
+    sendRegisterRequest($username, $hashed_password, $email);
 }
 ?>
 
@@ -98,7 +105,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
         <div>
             <label for="password">Password:</label>
-            <input type="password" id="password" name="password" required>
+            <input type="password" id="password" name="password" 
+                   pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,20}" 
+                   title="Password must be 8-20 characters long, include at least one uppercase letter, one lowercase letter, and one digit." 
+                   required>
         </div>
         <div>
             <label for="email">Email:</label>

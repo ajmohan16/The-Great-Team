@@ -24,18 +24,14 @@ function sendLoginRequest($username, $password) {
         $channel->queue_declare($request_queue, false, false, false, false);
         $channel->queue_declare($response_queue, false, false, false, false);
 
-        // Prepare login request message without correlation ID
-        $messageBody = json_encode([
-            'username' => $username,
-            'password' => $password
-        ]);
+        // Prepare login request message
+        $messageBody = json_encode(['username' => $username]);
         $message = new AMQPMessage($messageBody, [
-            'reply_to' => $response_queue  // Set reply-to header for response
+            'reply_to' => $response_queue // Set reply-to header for response
         ]);
 
         // Send login request
         $channel->basic_publish($message, '', $request_queue);
-        echo "Login request sent for user: $username<br>";
 
         // Listen for a response
         $response = null;
@@ -48,14 +44,21 @@ function sendLoginRequest($username, $password) {
 
         // Wait for the response message
         while (!$response) {
-            $channel->wait(null, false, 10);  // Timeout after 10 seconds
+            $channel->wait(null, false, 10); // Timeout after 10 seconds
         }
 
         // Process the response
         if (isset($response['login_success']) && $response['login_success']) {
-            $_SESSION['loggedin'] = true;
-            $_SESSION['username'] = $username;
-            header('Location: home.php');
+            $hashed_password = $response['hashed_password'] ?? null;
+
+            if ($hashed_password && password_verify($password, $hashed_password)) {
+                $_SESSION['loggedin'] = true;
+                $_SESSION['username'] = $username;
+                header('Location: landing_page.php');
+                exit();
+            } else {
+                echo "Invalid username or password.";
+            }
         } else {
             echo "Invalid username or password.";
         }
