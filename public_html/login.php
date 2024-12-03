@@ -1,4 +1,5 @@
 <?php
+//test
 // login.php
 require 'vendor/autoload.php';
 //include navigation bar
