@@ -54,7 +54,11 @@ function sendLoginRequest($username, $password) {
             if ($hashed_password && password_verify($password, $hashed_password)) {
                 $_SESSION['loggedin'] = true;
                 $_SESSION['username'] = $username;
+<<<<<<<< HEAD:RabbitMQloginrecommedation_songs (2).php
                 header('Location: home.php');
+========
+                header('Location: landing_page.php');
+>>>>>>>> 94b2c36ccb9d5abe4c801d66a34316b5952bc58b:login.php
                 exit();
             } else {
                 echo "Invalid username or password.";
