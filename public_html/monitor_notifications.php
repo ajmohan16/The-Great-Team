@@ -23,144 +23,146 @@ $login_response_queue = 'login_responses';
 $register_request_queue = 'register_requests';
 $register_response_queue = 'register_responses';
 
-// Verify login credentials
-function verifyLoginCredentials($username, $password) {
+function getPDOConnection() {
     global $mysqlHost, $mysqlDB, $mysqlUser, $mysqlPassword;
 
     try {
         $pdo = new PDO("mysql:host=$mysqlHost;dbname=$mysqlDB", $mysqlUser, $mysqlPassword);
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-        $stmt = $pdo->prepare("SELECT user_id FROM users WHERE username = :username AND password = :password");
-        $stmt->execute(['username' => $username, 'password' => $password]);
-        $user = $stmt->fetch();
-
-        return $user ? true : false;
+        return $pdo;
     } catch (PDOException $e) {
-        echo "Database error: " . $e->getMessage();
-        return false;
+        echo "Database connection error: " . $e->getMessage() . "\n";
+        exit(1);
     }
 }
 
-// Register new user
+function verifyLoginCredentials($username, $password) {
+    $pdo = getPDOConnection();
+
+    $stmt = $pdo->prepare("SELECT password FROM users WHERE username = :username");
+    $stmt->execute(['username' => $username]);
+    $user = $stmt->fetch();
+
+    return $user && password_verify($password, $user['password']);
+}
+
 function registerUser($username, $password, $email) {
-    global $mysqlHost, $mysqlDB, $mysqlUser, $mysqlPassword;
+    $pdo = getPDOConnection();
 
     try {
-        $pdo = new PDO("mysql:host=$mysqlHost;dbname=$mysqlDB", $mysqlUser, $mysqlPassword);
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $stmt = $pdo->prepare("SELECT 1 FROM users WHERE username = :username OR email = :email");
+        $stmt->execute(['username' => $username, 'email' => $email]);
+        if ($stmt->fetch()) {
+            return "Username or email already exists.";
+        }
 
+        $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
         $stmt = $pdo->prepare("INSERT INTO users (username, password, email) VALUES (:username, :password, :email)");
-        $stmt->execute(['username' => $username, 'password' => $password, 'email' => $email]);
-
+        $stmt->execute(['username' => $username, 'password' => $hashedPassword, 'email' => $email]);
         return true;
     } catch (PDOException $e) {
-        echo "Database error: " . $e->getMessage();
-        return false;
+        return "Database error: " . $e->getMessage();
     }
 }
 
-// Send response back to RabbitMQ
 function sendResponse($queue, $data) {
     global $rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost;
 
-    $connection = new AMQPStreamConnection($rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost);
-    $channel = $connection->channel();
+    try {
+        $connection = new AMQPStreamConnection($rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost);
+        $channel = $connection->channel();
 
-    $channel->queue_declare($queue, false, false, false, false);
+        $channel->queue_declare($queue, false, false, false, false);
 
-    $message = new AMQPMessage(json_encode($data));
-    $channel->basic_publish($message, '', $queue);
+        $message = new AMQPMessage(json_encode($data));
+        $channel->basic_publish($message, '', $queue);
 
-    echo "Response sent to queue: $queue\n";
+        echo "Response sent to queue: $queue\n";
 
-    $channel->close();
-    $connection->close();
+        $channel->close();
+        $connection->close();
+    } catch (Exception $e) {
+        echo "Failed to send response: " . $e->getMessage() . "\n";
+    }
 }
 
-// Consume login requests
 function consumeLoginRequests() {
     global $rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost, $login_request_queue, $login_response_queue;
 
-    $connection = new AMQPStreamConnection($rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost);
-    $channel = $connection->channel();
+    try {
+        $connection = new AMQPStreamConnection($rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost);
+        $channel = $connection->channel();
 
-    $channel->queue_declare($login_request_queue, false, false, false, false);
+        $channel->queue_declare($login_request_queue, false, false, false, false);
 
-    $callback = function($msg) use ($login_response_queue) {
-        $data = json_decode($msg->body, true);
-        $username = $data['username'];
-        $password = $data['password'];
+        $callback = function($msg) use ($login_response_queue) {
+            $data = json_decode($msg->body, true);
+            $username = $data['username'];
+            $password = $data['password'];
 
-        $login_success = verifyLoginCredentials($username, $password);
+            $login_success = verifyLoginCredentials($username, $password);
 
-        sendResponse($login_response_queue, [
-            'username' => $username,
-            'login_success' => $login_success,
-        ]);
-    };
+            sendResponse($login_response_queue, [
+                'username' => $username,
+                'login_success' => $login_success,
+            ]);
+        };
 
-    $channel->basic_consume($login_request_queue, '', false, true, false, false, $callback);
-    echo "Waiting for login requests...\n";
+        $channel->basic_consume($login_request_queue, '', false, true, false, false, $callback);
+        echo "Waiting for login requests...\n";
 
-    while ($channel->is_consuming()) {
-        $channel->wait();
+        while ($channel->is_consuming()) {
+            $channel->wait();
+        }
+
+        $channel->close();
+        $connection->close();
+    } catch (Exception $e) {
+        echo "Error consuming login requests: " . $e->getMessage() . "\n";
     }
-
-    $channel->close();
-    $connection->close();
 }
 
-// Consume registration requests
 function consumeRegisterRequests() {
     global $rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost, $register_request_queue, $register_response_queue;
 
-    $connection = new AMQPStreamConnection($rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost);
-    $channel = $connection->channel();
+    try {
+        $connection = new AMQPStreamConnection($rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost);
+        $channel = $connection->channel();
 
-    $channel->queue_declare($register_request_queue, false, false, false, false);
+        $channel->queue_declare($register_request_queue, false, false, false, false);
 
-    $callback = function($msg) use ($register_response_queue) {
-        $data = json_decode($msg->body, true);
-        $username = $data['username'];
-        $password = $data['password'];
-        $email = $data['email'];
+        $callback = function($msg) use ($register_response_queue) {
+            $data = json_decode($msg->body, true);
+            $username = $data['username'];
+            $password = $data['password'];
+            $email = $data['email'];
 
-        $register_success = registerUser($username, $password, $email);
+            $register_result = registerUser($username, $password, $email);
 
-        sendResponse($register_response_queue, [
-            'username' => $username,
-            'register_success' => $register_success,
-        ]);
-    };
+            sendResponse($register_response_queue, [
+                'username' => $username,
+                'register_success' => $register_result === true,
+                'error' => is_string($register_result) ? $register_result : null,
+            ]);
+        };
 
-    $channel->basic_consume($register_request_queue, '', false, true, false, false, $callback);
-    echo "Waiting for registration requests...\n";
+        $channel->basic_consume($register_request_queue, '', false, true, false, false, $callback);
+        echo "Waiting for registration requests...\n";
 
-    while ($channel->is_consuming()) {
-        $channel->wait();
+        while ($channel->is_consuming()) {
+            $channel->wait();
+        }
+
+        $channel->close();
+        $connection->close();
+    } catch (Exception $e) {
+        echo "Error consuming registration requests: " . $e->getMessage() . "\n";
     }
-
-    $channel->close();
-    $connection->close();
 }
 
-// Start both consumers
 function startConsumers() {
-    echo "Starting consumers...\n";
-
-    // Run both consumers in separate threads
-    $pid = pcntl_fork();
-
-    if ($pid == -1) {
-        die("Could not fork");
-    } elseif ($pid) {
-        // Parent process
-        consumeLoginRequests();
-    } else {
-        // Child process
-        consumeRegisterRequests();
-    }
+    consumeLoginRequests();
+    consumeRegisterRequests();
 }
 
 startConsumers();
