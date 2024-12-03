@@ -15,96 +15,153 @@ $rabbitHost = '172.26.233.84';
 $rabbitPort = 5672;
 $rabbitUser = 'test';
 $rabbitPassword = 'test';
-$rabbitVhost = 'testHost'; // Set the virtual host here
-$request_queue = 'login_requests';
-$response_queue = 'login_responses';
+$rabbitVhost = 'testHost';
 
+// Queue names
+$login_request_queue = 'login_requests';
+$login_response_queue = 'login_responses';
+$register_request_queue = 'register_requests';
+$register_response_queue = 'register_responses';
+
+// Verify login credentials
 function verifyLoginCredentials($username, $password) {
     global $mysqlHost, $mysqlDB, $mysqlUser, $mysqlPassword;
 
     try {
-        // Connect to MySQL
         $pdo = new PDO("mysql:host=$mysqlHost;dbname=$mysqlDB", $mysqlUser, $mysqlPassword);
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-        // Query to check if username and password match
         $stmt = $pdo->prepare("SELECT user_id FROM users WHERE username = :username AND password = :password");
         $stmt->execute(['username' => $username, 'password' => $password]);
         $user = $stmt->fetch();
 
-        return $user ? true : false; // Returns true if credentials are valid
+        return $user ? true : false;
     } catch (PDOException $e) {
         echo "Database error: " . $e->getMessage();
         return false;
     }
 }
 
+// Register new user
+function registerUser($username, $password, $email) {
+    global $mysqlHost, $mysqlDB, $mysqlUser, $mysqlPassword;
+
+    try {
+        $pdo = new PDO("mysql:host=$mysqlHost;dbname=$mysqlDB", $mysqlUser, $mysqlPassword);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+        $stmt = $pdo->prepare("INSERT INTO users (username, password, email) VALUES (:username, :password, :email)");
+        $stmt->execute(['username' => $username, 'password' => $password, 'email' => $email]);
+
+        return true;
+    } catch (PDOException $e) {
+        echo "Database error: " . $e->getMessage();
+        return false;
+    }
+}
 
 // Send response back to RabbitMQ
-function sendLoginResponse($username, $success) {
-    global $rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost, $response_queue;
+function sendResponse($queue, $data) {
+    global $rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost;
 
-    // Connect to RabbitMQ
     $connection = new AMQPStreamConnection($rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost);
     $channel = $connection->channel();
 
-    // Declare the response queue
-    $channel->queue_declare($response_queue, false, false, false, false);
+    $channel->queue_declare($queue, false, false, false, false);
 
-    // Create response message
-    $responseBody = json_encode([
-        'username' => $username,
-        'login_success' => $success,
-    ]);
-    $message = new AMQPMessage($responseBody);
+    $message = new AMQPMessage(json_encode($data));
+    $channel->basic_publish($message, '', $queue);
 
-    // Publish response message
-    $channel->basic_publish($message, '', $response_queue);
-    echo "Login response sent for user: $username, success: $success\n";
+    echo "Response sent to queue: $queue\n";
 
-    // Close the connection
     $channel->close();
     $connection->close();
 }
 
-// Consume login requests and verify credentials
+// Consume login requests
 function consumeLoginRequests() {
-    global $rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost, $request_queue;
+    global $rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost, $login_request_queue, $login_response_queue;
 
-    // Connect to RabbitMQ
     $connection = new AMQPStreamConnection($rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost);
     $channel = $connection->channel();
 
-    // Declare the request queue
-    $channel->queue_declare($request_queue, false, false, false, false);
+    $channel->queue_declare($login_request_queue, false, false, false, false);
 
-    // Callback function to handle login requests
-    $callback = function($msg) {
+    $callback = function($msg) use ($login_response_queue) {
         $data = json_decode($msg->body, true);
         $username = $data['username'];
         $password = $data['password'];
 
-        // Verify credentials in MySQL
         $login_success = verifyLoginCredentials($username, $password);
 
-        // Send the response back to RabbitMQ
-        sendLoginResponse($username, $login_success);
+        sendResponse($login_response_queue, [
+            'username' => $username,
+            'login_success' => $login_success,
+        ]);
     };
 
-    // Start consuming messages
-    $channel->basic_consume($request_queue, '', false, true, false, false, $callback);
+    $channel->basic_consume($login_request_queue, '', false, true, false, false, $callback);
     echo "Waiting for login requests...\n";
 
-    // Keep the consumer running
     while ($channel->is_consuming()) {
         $channel->wait();
     }
 
-    // Close the connection
     $channel->close();
     $connection->close();
 }
 
-// Start the consumer
-consumeLoginRequests();
+// Consume registration requests
+function consumeRegisterRequests() {
+    global $rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost, $register_request_queue, $register_response_queue;
+
+    $connection = new AMQPStreamConnection($rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost);
+    $channel = $connection->channel();
+
+    $channel->queue_declare($register_request_queue, false, false, false, false);
+
+    $callback = function($msg) use ($register_response_queue) {
+        $data = json_decode($msg->body, true);
+        $username = $data['username'];
+        $password = $data['password'];
+        $email = $data['email'];
+
+        $register_success = registerUser($username, $password, $email);
+
+        sendResponse($register_response_queue, [
+            'username' => $username,
+            'register_success' => $register_success,
+        ]);
+    };
+
+    $channel->basic_consume($register_request_queue, '', false, true, false, false, $callback);
+    echo "Waiting for registration requests...\n";
+
+    while ($channel->is_consuming()) {
+        $channel->wait();
+    }
+
+    $channel->close();
+    $connection->close();
+}
+
+// Start both consumers
+function startConsumers() {
+    echo "Starting consumers...\n";
+
+    // Run both consumers in separate threads
+    $pid = pcntl_fork();
+
+    if ($pid == -1) {
+        die("Could not fork");
+    } elseif ($pid) {
+        // Parent process
+        consumeLoginRequests();
+    } else {
+        // Child process
+        consumeRegisterRequests();
+    }
+}
+
+startConsumers();
 
