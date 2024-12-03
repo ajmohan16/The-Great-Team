@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+    <?php include 'nav.php'; ?> 
+
     <h1>My Library</h1>
 
     <!-- Add to Playlist Form -->

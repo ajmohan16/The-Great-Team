@@ -1,6 +1,8 @@
 <?php
 // login.php
 require 'vendor/autoload.php';
+//include navigation bar
+include 'nav.php';
 session_start();
 
 use PhpAmqpLib\Connection\AMQPStreamConnection;
@@ -111,4 +113,3 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </form>
 </body>
 </html>
-
