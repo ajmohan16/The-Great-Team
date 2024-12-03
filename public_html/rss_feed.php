@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+<?php include 'nav.php'; ?> 
     <h1>Personalized RSS Feed</h1>
 
     <!-- RSS Feed Display -->

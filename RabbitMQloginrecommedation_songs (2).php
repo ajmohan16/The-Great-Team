@@ -1,17 +1,19 @@
 <?php
-// register.php
+// login.php
 require 'vendor/autoload.php';
-use PhpAmqpLib\Connection\AMQPStreamConnection;
-use PhpAmqpLib\Message\AMQPMessage;
 //include navigation bar
 include 'nav.php';
+session_start();
+
+use PhpAmqpLib\Connection\AMQPStreamConnection;
+use PhpAmqpLib\Message\AMQPMessage;
 
 // RabbitMQ Configuration
 $rabbitmq_host = '172.26.233.84';
-$request_queue = 'register_requests';
-$response_queue = 'register_responses';
+$request_queue = 'login_requests';
+$response_queue = 'login_responses';
 
-function sendRegisterRequest($username, $password, $email) {
+function sendLoginRequest($username, $password) {
     global $rabbitmq_host, $request_queue, $response_queue;
 
     try {
@@ -22,19 +24,14 @@ function sendRegisterRequest($username, $password, $email) {
         $channel->queue_declare($request_queue, false, false, false, false);
         $channel->queue_declare($response_queue, false, false, false, false);
 
-        // Prepare registration request message
-        $messageBody = json_encode([
-            'username' => $username,
-            'password' => $password,
-            'email' => $email
-        ]);
+        // Prepare login request message
+        $messageBody = json_encode(['username' => $username]);
         $message = new AMQPMessage($messageBody, [
             'reply_to' => $response_queue // Set reply-to header for response
         ]);
 
-        // Send registration request
+        // Send login request
         $channel->basic_publish($message, '', $request_queue);
-        echo "Registration request sent for user: $username<br>";
 
         // Listen for a response
         $response = null;
@@ -51,10 +48,23 @@ function sendRegisterRequest($username, $password, $email) {
         }
 
         // Process the response
-        if (isset($response['register_success']) && $response['register_success']) {
-            echo "Registration successful. Please <a href='login.php'>log in</a>.";
+        if (isset($response['login_success']) && $response['login_success']) {
+            $hashed_password = $response['hashed_password'] ?? null;
+
+            if ($hashed_password && password_verify($password, $hashed_password)) {
+                $_SESSION['loggedin'] = true;
+                $_SESSION['username'] = $username;
+<<<<<<<< HEAD:RabbitMQloginrecommedation_songs (2).php
+                header('Location: home.php');
+========
+                header('Location: landing_page.php');
+>>>>>>>> 94b2c36ccb9d5abe4c801d66a34316b5952bc58b:login.php
+                exit();
+            } else {
+                echo "Invalid username or password.";
+            }
         } else {
-            echo "Registration failed: " . ($response['error'] ?? 'Unknown error') . "<br>";
+            echo "Invalid username or password.";
         }
 
         // Close the connection
@@ -62,7 +72,7 @@ function sendRegisterRequest($username, $password, $email) {
         $connection->close();
 
     } catch (Exception $e) {
-        echo "An error occurred while sending the registration request: " . $e->getMessage() . "<br>";
+        echo "An error occurred while sending the login request: " . $e->getMessage() . "<br>";
     }
 }
 
@@ -70,15 +80,14 @@ function sendRegisterRequest($username, $password, $email) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = $_POST['username'];
     $password = $_POST['password'];
-    $email = $_POST['email'];
 
-    if (empty($username) || empty($password) || empty($email)) {
-        echo "Username, password, and email are required.";
+    if (empty($username) || empty($password)) {
+        echo "Username and password are required.";
         exit();
     }
 
-    // Send registration request to RabbitMQ
-    sendRegisterRequest($username, $password, $email);
+    // Send login request to RabbitMQ
+    sendLoginRequest($username, $password);
 }
 ?>
 
@@ -87,11 +96,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register</title>
+    <title>Login</title>
 </head>
 <body>
-    <h2>Register Page</h2>
-    <form action="register.php" method="post">
+    <h2>Login Page</h2>
+    <form action="login.php" method="post">
         <div>
             <label for="username">Username:</label>
             <input type="text" id="username" name="username" required>
@@ -101,16 +110,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <input type="password" id="password" name="password" required>
         </div>
         <div>
-            <label for="email">Email:</label>
-            <input type="email" id="email" name="email" required>
-        </div>
-        <div>
-            <button type="submit">Register</button>
+            <button type="submit">Login</button>
         </div>
     </form>
-    <form action="login.php" method="get">
+    <form action="register.php" method="get">
         <div>
-            <button type="submit">Back to Login</button>
+            <button type="submit">Register</button>
         </div>
     </form>
 </body>
