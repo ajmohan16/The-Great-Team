@@ -43,7 +43,10 @@ function verifyLoginCredentials($username, $password) {
     $stmt->execute(['username' => $username]);
     $user = $stmt->fetch();
 
-    return $user && password_verify($password, $user['password']);
+    if ($user && password_verify($password, $user['password'])) {
+        return true;
+    }
+    return false;
 }
 
 function registerUser($username, $password, $email) {
@@ -100,7 +103,15 @@ function consumeLoginRequests() {
             $username = $data['username'];
             $password = $data['password'];
 
+            echo "Processing login request for user: $username\n";
+
             $login_success = verifyLoginCredentials($username, $password);
+
+            if ($login_success) {
+                echo "Login successful for user: $username\n";
+            } else {
+                echo "Login failed for user: $username\n";
+            }
 
             sendResponse($login_response_queue, [
                 'username' => $username,
@@ -137,7 +148,15 @@ function consumeRegisterRequests() {
             $password = $data['password'];
             $email = $data['email'];
 
+            echo "Processing registration request for user: $username\n";
+
             $register_result = registerUser($username, $password, $email);
+
+            if ($register_result === true) {
+                echo "Registration successful for user: $username\n";
+            } else {
+                echo "Registration failed for user: $username - Error: $register_result\n";
+            }
 
             sendResponse($register_response_queue, [
                 'username' => $username,
