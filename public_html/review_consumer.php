@@ -7,7 +7,7 @@ use PhpAmqpLib\Message\AMQPMessage;
 $pdo = new PDO('mysql:host=localhost;dbname=QueueExample', 'testUser', 'Test@1234');
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-$connection = new AMQPStreamConnection('172.26.233.84', 5672, 'test', 'test', 'testHost');
+$connection = new AMQPStreamConnection('172.26.184.4', 5672, 'test', 'test', 'testHost');
 $channel = $connection->channel();
 
 // Declare the queue with durability enabled

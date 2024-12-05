@@ -5,7 +5,7 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 
 function sendAlbumSearchRequest($artist_id, $access_token) {
-    $connection = new AMQPStreamConnection('172.26.233.84', 5672, 'test', 'test', 'testHost');
+    $connection = new AMQPStreamConnection('172.26.184.4', 5672, 'test', 'test', 'testHost');
     $channel = $connection->channel();
     $channel->queue_declare('album_search_requests', false, false, false, false);
     $channel->queue_declare('album_search_responses', false, false, false, false);

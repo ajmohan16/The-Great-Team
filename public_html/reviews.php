@@ -20,7 +20,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 
-$connection = new AMQPStreamConnection('172.26.233.84', 5672, 'test', 'test', 'testHost');
+$connection = new AMQPStreamConnection('172.26.184.4', 5672, 'test', 'test', 'testHost');
 $channel = $connection->channel();
 
 $channel->queue_declare('reviews_queue', false, true, false, false);
