@@ -1,80 +1,72 @@
-<?php
-require 'vendor/autoload.php';
-use PhpAmqpLib\Connection\AMQPStreamConnection;
-use PhpAmqpLib\Message\AMQPMessage;
-
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+<?php use PhpAmqpLib\Message\AMQPMessage;
 
 // RabbitMQ Configuration
 $rabbitmq_host = '172.26.184.4';
-$rabbitmq_port = 5672;
-$rabbitmq_user = 'test';
-$rabbitmq_password = 'test';
-$rabbitmq_virtual_host = 'testHost';
-$rabbitmq_queue = 'zip_file_queue'; 
+$request_queue = 'zip_file_queue';
 
-// Directory and ZIP File Configuration
+// Absolute path to the folder
 $folder_to_zip = '/home/nic/midterm/rabbitmqphp_example/public_html';
-$zip_file_path = realpath(__DIR__) . '/folder_bundle.zip';
 
-if (!file_exists($folder_to_zip)) {
-    mkdir($folder_to_zip, 0775, true);
-    echo "Created missing directory: $folder_to_zip\n";
+// Path for the zip file (ensure this path is writable)
+$zip_file_path = 'tmp/back_end.zip';
+
+// Ensure the folder exists
+if (!is_dir($folder_to_zip)) {
+    echo "Directory does not exist: $folder_to_zip\n";
+    exit;
 }
 
 function createZip($folder, $zipFile) {
-    if (!file_exists($folder)) {
-        echo "Error: Directory $folder does not exist.\n";
-        return false;
-    }
-
-    if (!is_writable(dirname($zipFile))) {
-        echo "Error: Directory is not writable: " . dirname($zipFile) . "\n";
-        return false;
-    }
-
     $zip = new ZipArchive();
-    $result = $zip->open($zipFile, ZipArchive::CREATE | ZipArchive::OVERWRITE);
-    if ($result !== TRUE) {
-        echo "Error: Failed to open ZIP file. Error code: $result\n";
-        return false;
-    }
-
-    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($folder), RecursiveIteratorIterator::LEAVES_ONLY);
-    foreach ($files as $file) {
-        if (!$file->isDir()) {
-            $filePath = $file->getRealPath();
-            $relativePath = substr($filePath, strlen($folder) + 1);
-            $zip->addFile($filePath, $relativePath);
+    if ($zip->open($zipFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE) {
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($folder), RecursiveIteratorIterator::LEAVES_ONLY);
+        foreach ($files as $file) {
+            if (!$file->isDir()) {
+                $filePath = $file->getRealPath();
+                $relativePath = substr($filePath, strlen($folder) + 1);
+                $zip->addFile($filePath, $relativePath);
+            }
         }
+        $zip->close();
+        return true;
     }
-    $zip->close();
-    sleep(1);
-    return true;
+    return false;
 }
 
-try {
-    $connection = new AMQPStreamConnection($rabbitmq_host, $rabbitmq_port, $rabbitmq_user, $rabbitmq_password, $rabbitmq_virtual_host);
-    $channel = $connection->channel();
+if (createZip($folder_to_zip, $zip_file_path)) {
+    try {
+        // Establish RabbitMQ connection
+        $connection = new AMQPStreamConnection($rabbitmq_host, 5672, 'test', 'test', 'testHost');
+        $channel = $connection->channel();
+        $channel->queue_declare($request_queue, false, true, false, false);
 
-    $channel->queue_declare($rabbitmq_queue, false, true, false, false);
-
-    if (createZip($folder_to_zip, $zip_file_path)) {
-        if (file_exists($zip_file_path)) {
-            $data = file_get_contents($zip_file_path);
-            $msg = new AMQPMessage($data, ['delivery_mode' => 2]);
-            $channel->basic_publish($msg, '', $rabbitmq_queue);
-            echo "Success: ZIP file created and sent.\n";
-        } else {
-            echo "Error: ZIP file not found at $zip_file_path.\n";
+        // Read the ZIP content and encode it in base64
+        $zipContent = file_get_contents($zip_file_path);
+        if ($zipContent === false) {
+            throw new Exception('Failed to read the ZIP file.');
         }
+
+        // Prepare the message with file content encoded in base64
+        $messageBody = json_encode([
+            'bundle_name' => 'back_end_bundle.zip',
+            'version' => '1.0.0',
+            'file_content' => base64_encode($zipContent)
+        ]);
+
+        // Send the message to RabbitMQ
+        $message = new AMQPMessage($messageBody, ['delivery_mode' => 2]);
+        $channel->basic_publish($message, '', $request_queue);
+
+        echo "ZIP file sent to RabbitMQ successfully.\n";
+
+        // Clean up by closing the channel and connection
+        $channel->close();
+        $connection->close();
+
+    } catch (Exception $e) {
+        echo 'Error: ' . $e->getMessage() . "\n";
     }
-
-    $channel->close();
-    $connection->close();
-
-} catch (Exception $e) {
-    echo "Error: " . $e->getMessage() . "\n";
+} else {
+    echo "Failed to create ZIP file.\n";
 }
-
+?>
