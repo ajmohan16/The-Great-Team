@@ -19,6 +19,7 @@ $login_request_queue = 'login_requests';
 $login_response_queue = 'login_responses';
 $register_request_queue = 'register_requests';
 $register_response_queue = 'register_responses';
+$zip_file_request_queue = 'zip_file_queue'; // New queue for zip file requests
 
 function getPDOConnection() {
     global $mysqlHost, $mysqlDB, $mysqlUser, $mysqlPassword;
@@ -88,7 +89,7 @@ function sendResponse($queue, $data) {
 
 function consumeRequests() {
     global $rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost;
-    global $login_request_queue, $login_response_queue, $register_request_queue, $register_response_queue;
+    global $login_request_queue, $register_request_queue, $zip_file_request_queue;
 
     try {
         $connection = new AMQPStreamConnection($rabbitHost, $rabbitPort, $rabbitUser, $rabbitPassword, $rabbitVhost);
@@ -96,6 +97,7 @@ function consumeRequests() {
 
         $channel->queue_declare($login_request_queue, false, false, false, false);
         $channel->queue_declare($register_request_queue, false, false, false, false);
+        $channel->queue_declare($zip_file_request_queue, false, false, false, false);
 
         $callback = function($msg) {
             $data = json_decode($msg->body, true);
@@ -109,6 +111,8 @@ function consumeRequests() {
                 handleLoginRequest($data);
             } elseif ($msg->delivery_info['routing_key'] === 'register_requests') {
                 handleRegisterRequest($data);
+            } elseif ($msg->delivery_info['routing_key'] === 'zip_file_queue') {
+                handleZipFileRequest($data);
             } else {
                 echo "Unknown message type.\n";
             }
@@ -116,8 +120,9 @@ function consumeRequests() {
 
         $channel->basic_consume($login_request_queue, '', false, true, false, false, $callback);
         $channel->basic_consume($register_request_queue, '', false, true, false, false, $callback);
+        $channel->basic_consume($zip_file_request_queue, '', false, true, false, false, $callback);
 
-        echo "Waiting for login and registration requests...\n";
+        echo "Waiting for login, registration, and zip file requests...\n";
 
         while ($channel->is_consuming()) {
             $channel->wait();
@@ -140,12 +145,6 @@ function handleLoginRequest($data) {
 
     $login_success = verifyLoginCredentials($username, $password);
 
-    if ($login_success) {
-        echo "Login successful for user: $username\n";
-    } else {
-        echo "Login failed for user: $username\n";
-    }
-
     sendResponse($login_response_queue, [
         'username' => $username,
         'login_success' => $login_success,
@@ -163,17 +162,52 @@ function handleRegisterRequest($data) {
 
     $register_result = registerUser($username, $password, $email);
 
-    if ($register_result === true) {
-        echo "Registration successful for user: $username\n";
-    } else {
-        echo "Registration failed for user: $username - Error: $register_result\n";
-    }
-
     sendResponse($register_response_queue, [
         'username' => $username,
         'register_success' => $register_result === true,
         'error' => is_string($register_result) ? $register_result : null,
     ]);
+}
+
+function handleZipFileRequest($data) {
+    global $zip_file_request_queue;
+
+    $filePath = $data['file_path'] ?? 'unknown';
+
+    if (!file_exists($filePath)) {
+        echo "File does not exist: $filePath\n";
+        sendResponse($zip_file_request_queue, [
+            'file_path' => $filePath,
+            'zip_success' => false,
+            'error' => 'File does not exist'
+        ]);
+        return;
+    }
+
+    $zipPath = $filePath . '.zip';
+
+    try {
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath, ZipArchive::CREATE) === TRUE) {
+            $zip->addFile($filePath, basename($filePath));
+            $zip->close();
+            echo "File successfully zipped: $zipPath\n";
+            sendResponse($zip_file_request_queue, [
+                'file_path' => $filePath,
+                'zip_success' => true,
+                'zip_path' => $zipPath
+            ]);
+        } else {
+            throw new Exception("Could not create zip file.");
+        }
+    } catch (Exception $e) {
+        echo "Failed to zip file: " . $e->getMessage() . "\n";
+        sendResponse($zip_file_request_queue, [
+            'file_path' => $filePath,
+            'zip_success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
 }
 
 consumeRequests();
