@@ -5,8 +5,8 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 use Twilio\Rest\Client;
 
-$twilio_sid = 'AC204df4d0bb5bb41e7c0e23ad63292a09';
-$twilio_auth_token = 'addd5ed5e156762614a1bcc10d0e8629';
+$twilio_sid = '...';
+$twilio_auth_token = '...';
 $twilio_from_number = "12293543786";
 
 $client = new Client($twilio_sid, $twilio_auth_token);
