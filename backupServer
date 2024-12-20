@@ -1,0 +1,18 @@
+BACKUP_DEST="var/www/html/backups"
+TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+BACKUP_NAME="backup_&TIMESTAMP.tar.gz"
+
+if [ ! -d "$BACKUP_DES"]; then
+        echo "Creating backup directory: $BACKUP_DEST"
+        sudo mkdir -p "BACKUP_DEST"
+        sudo chown www-data:www-data "$BACKUP_DEST"
+        sudo chmod 755 "$BACKUP_DEST"
+fi
+
+echo "Creating backup achive..."
+tar -czf "/tmp/$BACKUP_NAME" -C "$(dirname "$BACKUP_SOURCE")" "$(basename "BACKUP_SOURCE")
+
+echo "Moving backup to Apache2 directory..."
+sudo mv "/tmp/$BACKUP_NAME" "$BACKUP_DEST"
+sudo chown www-data:www-data "$BACKUP_DEST/$BACKUP_NAME"
+echo "Backup successful: $BACKUP_DEST/$BACKUP_NAME"
