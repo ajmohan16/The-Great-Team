@@ -1,7 +1,7 @@
 <?php
 // MySQL Database connection settings
 $mysqlHost = 'localhost';
-$mysqlDB = 'QueueExample';
+$mysqlDB = 'QueueExample_QA';
 $mysqlUser = 'testUser';
 $mysqlPassword = 'Test@1234';
 
