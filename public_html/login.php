@@ -15,9 +15,9 @@ $request_queue = 'login_requests';
 $response_queue = 'login_responses';
 
 // Twilio Configuration
-$twilio_sid = 'YOUR_TWILIO_SID';
-$twilio_token = 'YOUR_TWILIO_AUTH_TOKEN';
-$twilio_from = 'YOUR_TWILIO_PHONE_NUMBER';
+$twilio_sid = 'AC204df4d0bb5bb41e7c0e23ad63292a09';
+$twilio_token = 'addd5ed5e156762614a1bcc10d0e8629';
+$twilio_from = '+12293543786';
 
 function sendLoginRequest($username, $password) {
     global $rabbitmq_host, $request_queue, $response_queue;
