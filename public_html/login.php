@@ -1,18 +1,23 @@
 <?php
-//test
-// login.php
+// Include necessary dependencies
 require 'vendor/autoload.php';
-//include navigation bar
-include 'nav.php';
-session_start();
-
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
+use Twilio\Rest\Client;
+
+// Include the navigation bar
+include 'nav.php';
+session_start();
 
 // RabbitMQ Configuration
 $rabbitmq_host = '172.26.184.4';
 $request_queue = 'login_requests';
 $response_queue = 'login_responses';
+
+// Twilio Configuration
+$twilio_sid = 'YOUR_TWILIO_SID';
+$twilio_token = 'YOUR_TWILIO_AUTH_TOKEN';
+$twilio_from = 'YOUR_TWILIO_PHONE_NUMBER';
 
 function sendLoginRequest($username, $password) {
     global $rabbitmq_host, $request_queue, $response_queue;
@@ -25,7 +30,7 @@ function sendLoginRequest($username, $password) {
         $channel->queue_declare($request_queue, false, false, false, false);
         $channel->queue_declare($response_queue, false, false, false, false);
 
-        // Prepare login request message without correlation ID
+        // Prepare login request message
         $messageBody = json_encode([
             'username' => $username,
             'password' => $password
@@ -54,9 +59,18 @@ function sendLoginRequest($username, $password) {
 
         // Process the response
         if (isset($response['login_success']) && $response['login_success']) {
-            $_SESSION['loggedin'] = true;
+            // Generate OTP
+            $otp = rand(100000, 999999);
+            $_SESSION['otp'] = $otp;
             $_SESSION['username'] = $username;
-            header('Location: home.php');
+            $_SESSION['phone'] = $response['phone']; // Assuming phone number is returned
+
+            // Send OTP via SMS
+            sendOtp($_SESSION['phone'], $otp);
+
+            // Redirect to OTP verification page
+            header('Location: verify_otp.php');
+            exit();
         } else {
             echo "Invalid username or password.";
         }
@@ -67,6 +81,24 @@ function sendLoginRequest($username, $password) {
 
     } catch (Exception $e) {
         echo "An error occurred while sending the login request: " . $e->getMessage() . "<br>";
+    }
+}
+
+function sendOtp($phone, $otp) {
+    global $twilio_sid, $twilio_token, $twilio_from;
+
+    try {
+        $client = new Client($twilio_sid, $twilio_token);
+        $client->messages->create(
+            $phone,
+            [
+                'from' => $twilio_from,
+                'body' => "Your OTP is: $otp"
+            ]
+        );
+        echo "OTP sent to $phone<br>";
+    } catch (Exception $e) {
+        echo "Failed to send OTP: " . $e->getMessage() . "<br>";
     }
 }
 
@@ -91,27 +123,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
-    <h2>Login Page</h2>
-    <form action="login.php" method="post">
-        <div>
-            <label for="username">Username:</label>
-            <input type="text" id="username" name="username" required>
-        </div>
-        <div>
-            <label for="password">Password:</label>
-            <input type="password" id="password" name="password" required>
-        </div>
-        <div>
-            <button type="submit">Login</button>
-        </div>
-    </form>
-    <form action="register.php" method="get">
-        <div>
-            <button type="submit">Register</button>
-        </div>
-    </form>
+    <div class="container mt-5">
+        <h2>Login Page</h2>
+        <form action="login.php" method="post">
+            <div class="mb-3">
+                <label for="username" class="form-label">Username:</label>
+                <input type="text" id="username" name="username" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">Password:</label>
+                <input type="password" id="password" name="password" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Login</button>
+        </form>
+        <a href="register.php" class="btn btn-link mt-3">Register</a>
+    </div>
 </body>
 </html>
