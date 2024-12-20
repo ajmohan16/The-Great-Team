@@ -6,7 +6,7 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 
 // RabbitMQ connection settings
-$rabbitHost = '172.26.233.84';
+$rabbitHost = '172.26.184.4';
 $rabbitPort = 5672;
 $rabbitUser = 'test';
 $rabbitPassword = 'test';

@@ -5,7 +5,7 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 
 // RabbitMQ Configuration
-$rabbitmq_host = '172.26.233.84';
+$rabbitmq_host = '172.26.184.4';
 $request_queue = 'artist_search_requests';
 $response_queue = 'artist_search_responses';
 

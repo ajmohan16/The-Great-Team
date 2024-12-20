@@ -8,7 +8,7 @@ use PhpAmqpLib\Message\AMQPMessage;
 header('Content-Type: application/json');
 
 // RabbitMQ configuration
-$rabbitmq_host = '172.26.233.84';
+$rabbitmq_host = '172.26.184.4';
 $rabbitmq_port = 5672;
 $rabbitmq_user = 'test';
 $rabbitmq_password = 'test';

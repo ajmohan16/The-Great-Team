@@ -5,7 +5,7 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 
 // RabbitMQ connection settings
-$connection = new AMQPStreamConnection('172.26.233.84', 5672, 'test', 'test', 'testHost');
+$connection = new AMQPStreamConnection('172.26.184.4', 5672, 'test', 'test', 'testHost');
 $channel = $connection->channel();
 
 // Declare the queue for reviews with durability enabled
