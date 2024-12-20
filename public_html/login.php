@@ -14,19 +14,22 @@ $rabbitmq_host = '172.26.184.4';
 $request_queue = 'login_requests';
 $response_queue = 'login_responses';
 
+// Twilio Configuration (assumes you have a separate config file for Twilio)
 $twilioConfig = include 'twilio_config.php';
 $twilio_sid = $twilioConfig['sid'];
 $twilio_token = $twilioConfig['auth_token'];
 $twilio_from = $twilioConfig['from'];
 
+// Function to send login request to RabbitMQ
 function sendLoginRequest($username, $password) {
     global $rabbitmq_host, $request_queue, $response_queue;
 
     try {
+        // Establish connection to RabbitMQ
         $connection = new AMQPStreamConnection($rabbitmq_host, 5672, 'test', 'test', 'testHost');
         $channel = $connection->channel();
 
-        // Declare queues
+        // Declare the request and response queues
         $channel->queue_declare($request_queue, false, false, false, false);
         $channel->queue_declare($response_queue, false, false, false, false);
 
@@ -39,7 +42,7 @@ function sendLoginRequest($username, $password) {
             'reply_to' => $response_queue  // Set reply-to header for response
         ]);
 
-        // Send login request
+        // Send login request to RabbitMQ
         $channel->basic_publish($message, '', $request_queue);
         echo "Login request sent for user: $username<br>";
 
@@ -49,12 +52,12 @@ function sendLoginRequest($username, $password) {
             $response = json_decode($msg->body, true);
         };
 
-        // Set up the consumer
+        // Set up the consumer to listen for the response
         $channel->basic_consume($response_queue, '', false, true, false, false, $callback);
 
-        // Wait for the response message
+        // Wait for the response message (timeout after 10 seconds)
         while (!$response) {
-            $channel->wait(null, false, 10);  // Timeout after 10 seconds
+            $channel->wait(null, false, 10);
         }
 
         // Process the response
@@ -84,11 +87,15 @@ function sendLoginRequest($username, $password) {
     }
 }
 
+// Function to send OTP via Twilio
 function sendOtp($phone, $otp) {
     global $twilio_sid, $twilio_token, $twilio_from;
 
     try {
+        // Initialize Twilio client
         $client = new Client($twilio_sid, $twilio_token);
+
+        // Send OTP SMS
         $client->messages->create(
             $phone,
             [
@@ -107,6 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = $_POST['username'];
     $password = $_POST['password'];
 
+    // Check if username and password are provided
     if (empty($username) || empty($password)) {
         echo "Username and password are required.";
         exit();
@@ -143,3 +151,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 </body>
 </html>
+
