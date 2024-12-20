@@ -1,53 +1,81 @@
 <?php
-// register.php
+// Include necessary dependencies
 require 'vendor/autoload.php';
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
-//include navigation bar
-include 'nav.php';
+
+// Start session for managing user states
+session_start();
 
 // RabbitMQ Configuration
-$rabbitmq_host = '172.26.184.4';
+$rabbitmq_host = 'localhost';
 $request_queue = 'register_requests';
 $response_queue = 'register_responses';
 
-function sendRegisterRequest($username, $password, $email) {
+// Log errors to RabbitMQ
+function logErrorToRabbitMQ($exception) {
+    try {
+        $connection = new AMQPStreamConnection('localhost', 5672, 'guest', 'guest');
+        $channel = $connection->channel();
+
+        // Declare a fanout exchange
+        $channel->exchange_declare('logs_exchange', 'fanout', false, false, false);
+
+        // Prepare error message
+        $errorMessage = [
+            "type" => get_class($exception),
+            "message" => $exception->getMessage(),
+            "trace" => $exception->getTraceAsString(),
+            "timestamp" => date("Y-m-d H:i:s")
+        ];
+        $message = new AMQPMessage(json_encode($errorMessage));
+
+        // Publish the message to the exchange
+        $channel->basic_publish($message, 'logs_exchange');
+
+        $channel->close();
+        $connection->close();
+    } catch (Exception $e) {
+        // Fallback to PHP's error log if RabbitMQ fails
+        error_log("Failed to log error to RabbitMQ: " . $e->getMessage());
+    }
+}
+
+function sendRegisterRequest($username, $password, $email, $phone) {
     global $rabbitmq_host, $request_queue, $response_queue;
 
     try {
-        $connection = new AMQPStreamConnection($rabbitmq_host, 5672, 'test', 'test', 'testHost');
+        // Establish connection to RabbitMQ server
+        $connection = new AMQPStreamConnection($rabbitmq_host, 5672, 'guest', 'guest');
         $channel = $connection->channel();
 
-        // Declare queues
+        // Declare necessary queues
         $channel->queue_declare($request_queue, false, false, false, false);
         $channel->queue_declare($response_queue, false, false, false, false);
 
         // Prepare registration request message
         $messageBody = json_encode([
             'username' => $username,
-            'password' => $password,
-            'email' => $email
+            'password' => password_hash($password, PASSWORD_DEFAULT),
+            'email' => $email,
+            'phone' => $phone
         ]);
-        $message = new AMQPMessage($messageBody, [
-            'reply_to' => $response_queue // Set reply-to header for response
-        ]);
+        $message = new AMQPMessage($messageBody, ['reply_to' => $response_queue]);
 
         // Send registration request
         $channel->basic_publish($message, '', $request_queue);
-        echo "Registration request sent for user: $username<br>";
 
-        // Listen for a response
+        // Listen for response
         $response = null;
         $callback = function ($msg) use (&$response) {
             $response = json_decode($msg->body, true);
         };
 
-        // Set up the consumer
         $channel->basic_consume($response_queue, '', false, true, false, false, $callback);
 
-        // Wait for the response message
+        // Wait for a response (10-second timeout)
         while (!$response) {
-            $channel->wait(null, false, 10); // Timeout after 10 seconds
+            $channel->wait(null, false, 10);
         }
 
         // Process the response
@@ -57,12 +85,12 @@ function sendRegisterRequest($username, $password, $email) {
             echo "Registration failed: " . ($response['error'] ?? 'Unknown error') . "<br>";
         }
 
-        // Close the connection
         $channel->close();
         $connection->close();
 
     } catch (Exception $e) {
-        echo "An error occurred while sending the registration request: " . $e->getMessage() . "<br>";
+        logErrorToRabbitMQ($e);
+        echo "An error occurred during registration. Please try again later.";
     }
 }
 
@@ -71,14 +99,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = $_POST['username'];
     $password = $_POST['password'];
     $email = $_POST['email'];
+    $phone = $_POST['phone'];
 
-    if (empty($username) || empty($password) || empty($email)) {
-        echo "Username, password, and email are required.";
+    // Validate form inputs
+    if (empty($username) || empty($password) || empty($email) || empty($phone)) {
+        echo "All fields are required.";
         exit();
     }
 
-    // Send registration request to RabbitMQ
-    sendRegisterRequest($username, $password, $email);
+    // Send registration request
+    sendRegisterRequest($username, $password, $email, $phone);
 }
 ?>
 
@@ -88,30 +118,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Register</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
-    <h2>Register Page</h2>
-    <form action="register.php" method="post">
-        <div>
-            <label for="username">Username:</label>
-            <input type="text" id="username" name="username" required>
-        </div>
-        <div>
-            <label for="password">Password:</label>
-            <input type="password" id="password" name="password" required>
-        </div>
-        <div>
-            <label for="email">Email:</label>
-            <input type="email" id="email" name="email" required>
-        </div>
-        <div>
-            <button type="submit">Register</button>
-        </div>
-    </form>
-    <form action="login.php" method="get">
-        <div>
-            <button type="submit">Back to Login</button>
-        </div>
-    </form>
+    <div class="container">
+        <h2>Register</h2>
+        <form action="register.php" method="post">
+            <div class="mb-3">
+                <label for="username" class="form-label">Username:</label>
+                <input type="text" id="username" name="username" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">Password:</label>
+                <input type="password" id="password" name="password" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label for="email" class="form-label">Email:</label>
+                <input type="email" id="email" name="email" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label for="phone" class="form-label">Phone Number:</label>
+                <input type="text" id="phone" name="phone" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Register</button>
+        </form>
+        <a href="login.php" class="btn btn-secondary mt-3">Back to Login</a>
+    </div>
 </body>
 </html>
