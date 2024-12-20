@@ -5,7 +5,7 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 use Twilio\Rest\Client;
 
-// Include the navigation bar
+// Include navigation bar
 include 'nav.php';
 session_start();
 
@@ -14,13 +14,12 @@ $rabbitmq_host = '172.26.184.4';
 $request_queue = 'login_requests';
 $response_queue = 'login_responses';
 
-// Twilio Configuration (assumes you have a separate config file for Twilio)
+// Twilio Configuration
 $twilioConfig = include 'twilio_config.php';
 $twilio_sid = $twilioConfig['sid'];
 $twilio_token = $twilioConfig['auth_token'];
 $twilio_from = $twilioConfig['from'];
 
-// Function to send login request to RabbitMQ
 function sendLoginRequest($username, $password) {
     global $rabbitmq_host, $request_queue, $response_queue;
 
@@ -56,26 +55,31 @@ function sendLoginRequest($username, $password) {
         $channel->basic_consume($response_queue, '', false, true, false, false, $callback);
 
         // Wait for the response message (timeout after 10 seconds)
-        while (!$response) {
-            $channel->wait(null, false, 10);
+        $start = time();
+        while (!$response && (time() - $start) < 15) {  // Increase timeout to 15 seconds
+            $channel->wait(null, false, 5);  // Wait for 5 seconds each loop
         }
 
-        // Process the response
-        if (isset($response['login_success']) && $response['login_success']) {
-            // Generate OTP
-            $otp = rand(100000, 999999);
-            $_SESSION['otp'] = $otp;
-            $_SESSION['username'] = $username;
-            $_SESSION['phone'] = $response['phone']; // Assuming phone number is returned
+        if ($response) {
+            // Process the response
+            if (isset($response['login_success']) && $response['login_success']) {
+                // Generate OTP
+                $otp = rand(100000, 999999);
+                $_SESSION['otp'] = $otp;
+                $_SESSION['username'] = $username;
+                $_SESSION['phone'] = $response['phone']; // Assuming phone number is returned
 
-            // Send OTP via SMS
-            sendOtp($_SESSION['phone'], $otp);
+                // Send OTP via SMS
+                sendOtp($_SESSION['phone'], $otp);
 
-            // Redirect to OTP verification page
-            header('Location: verify_otp.php');
-            exit();
+                // Redirect to OTP verification page
+                header('Location: verify_otp.php');
+                exit();
+            } else {
+                echo "Invalid username or password.<br>";
+            }
         } else {
-            echo "Invalid username or password.";
+            echo "No response received from the backend. Check RabbitMQ consumer.<br>";
         }
 
         // Close the connection
@@ -92,10 +96,7 @@ function sendOtp($phone, $otp) {
     global $twilio_sid, $twilio_token, $twilio_from;
 
     try {
-        // Initialize Twilio client
         $client = new Client($twilio_sid, $twilio_token);
-
-        // Send OTP SMS
         $client->messages->create(
             $phone,
             [
@@ -114,7 +115,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = $_POST['username'];
     $password = $_POST['password'];
 
-    // Check if username and password are provided
     if (empty($username) || empty($password)) {
         echo "Username and password are required.";
         exit();
